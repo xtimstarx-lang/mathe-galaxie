@@ -549,6 +549,11 @@ table.ht th { background: var(--panel2); font-size: 14px; }
 table.ct { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; }
 table.ct th, table.ct td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 table.ct th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+/* Lehrer-Zentrale: anklickbare Spielerzeilen */
+table.tl tr[data-u] { cursor: pointer; }
+table.tl tr[data-u]:hover td, table.tl tr[data-u]:focus-visible td { background: var(--panel2); }
+.setrow.tp { align-items: flex-start; }
+.setrow.tp > div { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -2379,13 +2384,14 @@ const planetStars = p => p.games.reduce((s, g) => s + (S.stars[gkey(p, g)] || 0)
 const totalStars = () => PLANETS.reduce((s, p) => s + planetStars(p), 0);
 const MAIN = PLANETS.slice(0, 10);
 function unlocked(i) {
-  if (S.teacher || i === 0) return true;
+  if (teacherOn() || i === 0) return true;
   const p = PLANETS[i];
+  if (extraOpen(p.id)) return true;
   if (p.id === 'bonus') return Object.keys(S.boss).length >= 2;
   const prev = PLANETS[i - 1];
   return !!S.boss[prev.id] || planetStars(prev) >= 6;
 }
-const finalUnlocked = () => S.teacher || MAIN.every(p => S.boss[p.id]);
+const finalUnlocked = () => teacherOn() || !!(ACC.unl && (ACC.unl.final || ACC.unl.all)) || MAIN.every(p => S.boss[p.id]);
 function addCr(n) { S.cr += n; S.crEarned += n; if (S.crEarned >= 200) award('rich'); }
 function award(id) {
   if (S.badges[id]) return;
@@ -3130,7 +3136,8 @@ function showParents() {
       <p class="sm" style="margin:10px 0 0">Grün = richtig, rot = falsch. Prozent = Anteil richtiger Antworten.</p></div>
     <div class="panel section">
       <div class="setrow"><label for="nameIn">Name für die Urkunde</label><input id="nameIn" class="txtin" maxlength="30" value="${esc(S.name)}" placeholder="Vorname"></div>
-      <div class="setrow"><label id="tL">Lehrer-Modus: alle Planeten freischalten</label><button class="switch" role="switch" aria-labelledby="tL" aria-checked="${S.teacher}" id="tSw"></button></div>
+      ${selfTeacherAllowed() ? `<div class="setrow"><label id="tL">Lehrer-Modus: alle Planeten freischalten</label><button class="switch" role="switch" aria-labelledby="tL" aria-checked="${S.teacher}" id="tSw"></button></div>` : ''}
+      ${ACC.admin ? '<div class="setrow"><label>Spieler-Übersicht & Planeten freischalten</label><button class="btn pink" id="tchBtn">🧑‍🏫 Lehrer-Zentrale</button></div>' : ''}
       <div class="setrow"><label id="sL">Soundeffekte</label><button class="switch" role="switch" aria-labelledby="sL" aria-checked="${S.sound}" id="sSw"></button></div>
       <div class="setrow"><label>Spielstand löschen</label><button class="btn sec" id="reset">Alles zurücksetzen</button></div>
     </div>
@@ -3139,7 +3146,8 @@ function showParents() {
   $('#back').onclick = showMap;
   classOverview();
   $('#nameIn').addEventListener('input', e => { S.name = e.target.value.trim().slice(0, 30); save(); });
-  $('#tSw').onclick = e => { S.teacher = !S.teacher; e.currentTarget.setAttribute('aria-checked', S.teacher); save(); };
+  if ($('#tSw')) $('#tSw').onclick = e => { S.teacher = !S.teacher; e.currentTarget.setAttribute('aria-checked', S.teacher); save(); };
+  if ($('#tchBtn')) $('#tchBtn').onclick = showTeacher;
   $('#sSw').onclick = e => { S.sound = !S.sound; e.currentTarget.setAttribute('aria-checked', S.sound); save(); updateTop(); };
   $('#reset').onclick = () => modal('<h2>Wirklich alles löschen?</h2><p>Sterne, Kristalle, Abzeichen und Statistik gehen verloren.</p>',
     [{ label: 'Abbrechen', cls: 'sec' }, { label: 'Ja, löschen', cls: 'pink', fn: () => { const nm0 = ACC.acct ? ACC.acct.name : ''; S = clone(DEF); S.name = nm0; save(); updateTop(); paintLogo(); showMap(); } }]);
@@ -3170,7 +3178,12 @@ function welcome() {
    · claude   – Artifact-Speicher (db) in der Claude-Version
    · firebase – Firebase Auth + Firestore auf der öffentlichen Website
    ===================================================================== */
-const ACC = { be: null, acct: null, timer: null, chain: Promise.resolve(), lastSent: '', errShown: false, unavailable: '' };
+const ACC = { be: null, acct: null, timer: null, chain: Promise.resolve(), lastSent: '', errShown: false, unavailable: '', admin: false, unl: {}, unlOff: null };
+/* Lehrer-Freischaltungen: ACC.unl = { all, final, planets: { p3: true, … } } – kommt aus Firestore unlocks/{uid} */
+const extraOpen = id => !!(ACC.unl && (ACC.unl.all || (ACC.unl.planets && ACC.unl.planets[id])));
+/* Auf der Website dürfen nur Lehrer-Accounts den Lehrer-Modus selbst einschalten */
+const selfTeacherAllowed = () => !(ACC.be && ACC.be.kind === 'firebase' && !ACC.admin);
+const teacherOn = () => !!S.teacher && selfTeacherAllowed();
 const LOGIN_KEY = 'mathe-galaxie-login';
 const PW_MIN = 6;
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -3270,7 +3283,9 @@ function firebaseBackend(fb, cfg) {
     const snap = await ref(u.uid).get();
     const d = snap.exists ? snap.data() : null;
     const name = (d && d.name) || u.displayName || (u.email || '').replace(FB_DOMAIN, '');
-    return { key: u.uid, name, state: d && d.state ? d.state : freshState(name), meta: { name, key: nameKey(name) } };
+    let admin = false;
+    try { admin = (await store.collection('admins').doc(u.uid).get()).exists; } catch (e) { /* kein Lehrer */ }
+    return { key: u.uid, name, admin, state: d && d.state ? d.state : freshState(name), meta: { name, key: nameKey(name) } };
   };
   return {
     kind: 'firebase', canWrite: true, isOwner: false,
@@ -3309,7 +3324,14 @@ function firebaseBackend(fb, cfg) {
       catch (e) { throw 'Das alte Passwort stimmt nicht.'; }
       try { await u.updatePassword(newPw); } catch (e) { throw fbErr(e, 'Das Passwort konnte nicht geändert werden.'); }
     },
-    async listAll() { return []; },
+    /* Lehrer: alle Spieler samt Freischaltungen (Firestore-Regeln erlauben das nur für admins/{uid}) */
+    async listAll() {
+      const [acc, unl] = await Promise.all([store.collection('accounts').get(), store.collection('unlocks').get()]);
+      const um = {}; unl.docs.forEach(d => { um[d.id] = d.data(); });
+      return acc.docs.map(d => ({ uid: d.id, ...d.data(), unl: um[d.id] || {} })).filter(d => d.state);
+    },
+    async setUnlocks(uid, data) { await store.collection('unlocks').doc(uid).set({ ...data, updatedAt: Date.now() }); },
+    watchUnlocks(uid, cb) { return store.collection('unlocks').doc(uid).onSnapshot(s => cb(s.exists ? s.data() : {}), () => cb({})); },
     errText(e) { return fbErr(e, ''); }
   };
 }
@@ -3435,6 +3457,14 @@ function enterAccount(acct, auto, isNew) {
   S = Object.assign(clone(DEF), JSON.parse(JSON.stringify(acct.state || {})));
   S.name = S.name || acct.name;
   ACC.lastSent = JSON.stringify(S);
+  ACC.admin = !!acct.admin; ACC.unl = {};
+  if (ACC.unlOff) { ACC.unlOff(); ACC.unlOff = null; }
+  if (ACC.be && ACC.be.watchUnlocks) {
+    ACC.unlOff = ACC.be.watchUnlocks(acct.key, u => {
+      const before = JSON.stringify(ACC.unl); ACC.unl = u || {};
+      if (before !== JSON.stringify(ACC.unl) && ACC.acct === acct && $('.map')) showMap();
+    });
+  }
   $('.top').hidden = false;
   updateTop(); paintLogo(); paintAcc(); showMap();
   if (!auto) { Snd.win(); confetti(80); }
@@ -3445,13 +3475,16 @@ async function logout() {
   const acct = ACC.acct;
   try { await ACC.be.logout(acct); } catch (e) { /* egal */ }
   ACC.acct = null; ACC.lastSent = '';
+  if (ACC.unlOff) { ACC.unlOff(); ACC.unlOff = null; }
+  ACC.admin = false; ACC.unl = {};
   S = clone(DEF);
   showLogin({ prefill: acct && acct.name });
 }
 function accountMenu() {
   if (!ACC.acct) return showLogin();
   modal(`<div class="pw">${pipiSvg()}</div><h2>${esc(ACC.acct.name)}</h2><p>Dein Fortschritt wird automatisch in deinem Account gespeichert. Du kannst dich auf jedem Gerät mit deinem Benutzernamen und Passwort einloggen.</p>`,
-    [{ label: 'Abmelden', cls: 'sec', fn: logout }, { label: 'Passwort ändern', cls: 'sec', fn: changePw }, { label: 'Weiterspielen' }]);
+    [{ label: 'Abmelden', cls: 'sec', fn: logout }, { label: 'Passwort ändern', cls: 'sec', fn: changePw },
+      ...(ACC.admin ? [{ label: '🧑‍🏫 Lehrer-Zentrale', cls: 'pink', fn: showTeacher }] : []), { label: 'Weiterspielen' }]);
 }
 function changePw() {
   modal(`<h2>Passwort ändern</h2><input id="pwOld" class="txtin" type="password" placeholder="Altes Passwort" autocomplete="current-password" style="margin:6px 0"><input id="pwNew" class="txtin" type="password" placeholder="Neues Passwort (mind. ${PW_MIN} Zeichen)" autocomplete="new-password" style="margin:6px 0"><p class="lerr" id="pwErr"></p>`,
@@ -3478,6 +3511,94 @@ async function classOverview() {
     if (!rows.length) { box.innerHTML = '<p class="sm">Noch keine Accounts angelegt.</p>'; return; }
     box.innerHTML = `<div style="overflow-x:auto"><table class="ct"><tr><th>Spieler</th><th>Level</th><th>Sterne</th><th>Bosse</th><th>Aufgaben</th><th>richtig</th><th>zuletzt</th></tr>${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.lv}</td><td>${r.stars}</td><td>${r.bosses}</td><td>${r.tot}</td><td>${r.pc == null ? '–' : r.pc + ' %'}</td><td>${r.at ? new Date(r.at).toLocaleDateString('de-AT') : '–'}</td></tr>`).join('')}</table></div>`;
   } catch (e) { box.innerHTML = '<p class="sm">Die Übersicht konnte gerade nicht geladen werden.</p>'; }
+}
+
+/* =====================================================================
+   LEHRER-ZENTRALE (Website, nur Accounts in Firestore admins/{uid})
+   Übersicht aller Spieler + Planeten für einzelne Spieler freischalten
+   ===================================================================== */
+const TCH = { list: [], q: '' };
+const pStarsOf = (st, p) => p.games.reduce((s, g) => s + ((st.stars || {})[`${p.id}.${g.id}`] || 0), 0);
+function naturalOpen(st, i) {
+  if (i === 0) return true;
+  const p = PLANETS[i], boss = st.boss || {};
+  if (p.id === 'bonus') return Object.keys(boss).length >= 2;
+  return !!boss[PLANETS[i - 1].id] || pStarsOf(st, PLANETS[i - 1]) >= 6;
+}
+function playerSummary(d) {
+  const st = d.state || {}, stats = Object.values(st.stats || {});
+  const tot = stats.reduce((a, s) => a + s.c + s.w, 0), ok = stats.reduce((a, s) => a + s.c, 0);
+  const u = d.unl || {}, nUnl = u.all ? 'alle' : Object.values(u.planets || {}).filter(Boolean).length + (u.final ? ' + Endkampf' : '');
+  return { lv: levelOf(st.xp || 0).level, stars: Object.values(st.stars || {}).reduce((a, b) => a + b, 0), bosses: Object.keys(st.boss || {}).length,
+    tot, pc: tot ? Math.round(ok / tot * 100) : null, nUnl, at: d.updatedAt, won: !!st.finalWon };
+}
+const fmtDay = t => t ? new Date(t).toLocaleDateString('de-AT', { day: 'numeric', month: 'numeric', year: '2-digit' }) : '–';
+
+async function showTeacher() {
+  if (!ACC.admin || !ACC.be || !ACC.be.setUnlocks) return showMap();
+  stopGame();
+  app.innerHTML = `<div class="screen"><button class="back" id="back">← Sternenkarte</button><h2 class="sec-h">🧑‍🏫 Lehrer-Zentrale</h2>
+    <p class="sec-p">Alle angemeldeten Spieler. Tippe auf einen Spieler, um Details zu sehen und Planeten freizuschalten.</p>
+    <div class="panel section"><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <input id="tQ" class="txtin" style="flex:1;min-width:160px" placeholder="Spieler suchen …" value="${esc(TCH.q)}"><button class="btn sec" id="tRe">↻ Aktualisieren</button></div>
+      <div id="tBox"><p class="sm">Lade Spieler …</p></div></div></div>`;
+  $('#back').onclick = showMap;
+  $('#tRe').onclick = showTeacher;
+  $('#tQ').addEventListener('input', e => { TCH.q = e.target.value; paintTeacherList(); });
+  window.scrollTo(0, 0);
+  try { TCH.list = await ACC.be.listAll(); }
+  catch (e) { const b = $('#tBox'); if (b) b.innerHTML = `<p class="sm">Die Spieler konnten nicht geladen werden. ${esc(ACC.be.errText(e) || '')}</p>`; return; }
+  paintTeacherList();
+}
+function paintTeacherList() {
+  const box = $('#tBox'); if (!box) return;
+  const q = TCH.q.trim().toLowerCase();
+  const rows = TCH.list.filter(d => !q || String(d.name || '').toLowerCase().includes(q))
+    .map(d => ({ d, s: playerSummary(d) })).sort((a, b) => (b.s.at || 0) - (a.s.at || 0));
+  if (!TCH.list.length) { box.innerHTML = '<p class="sm">Noch keine Spieler angemeldet.</p>'; return; }
+  if (!rows.length) { box.innerHTML = '<p class="sm">Kein Spieler mit diesem Namen gefunden.</p>'; return; }
+  box.innerHTML = `<p class="sm" style="margin:0 0 8px">${TCH.list.length} Spieler · sortiert nach „zuletzt aktiv“</p><div style="overflow-x:auto"><table class="ct tl">
+    <tr><th>Spieler</th><th>Level</th><th>Sterne</th><th>Bosse</th><th>Aufgaben</th><th>richtig</th><th>freigeschaltet</th><th>zuletzt</th></tr>
+    ${rows.map(({ d, s }) => `<tr data-u="${esc(d.uid)}" tabindex="0"><td><b>${esc(d.name || '?')}</b>${s.won ? ' 🏆' : ''}</td><td>${s.lv}</td><td>${s.stars}</td><td>${s.bosses}/11</td><td>${s.tot}</td>
+      <td>${s.pc == null ? '–' : s.pc + ' %'}</td><td>${s.nUnl || '–'}</td><td>${fmtDay(s.at)}</td></tr>`).join('')}</table></div>`;
+  $$('tr[data-u]', box).forEach(tr => {
+    const open = () => showTeacherPlayer(tr.dataset.u);
+    tr.onclick = open; tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+  });
+}
+function showTeacherPlayer(uid) {
+  const d = TCH.list.find(x => x.uid === uid); if (!d) return showTeacher();
+  const st = d.state || {}, u = d.unl || {}, s = playerSummary(d), planets = u.planets || {};
+  const sw = (id, on, label) => `<button class="switch" role="switch" aria-label="${esc(label)}" aria-checked="${!!on}" data-sw="${id}"></button>`;
+  app.innerHTML = `<div class="screen"><button class="back" id="back">← Alle Spieler</button><h2 class="sec-h">${esc(d.name || '?')}</h2>
+    <p class="sec-p">Level ${s.lv} · ${s.stars} Sterne · ${s.bosses} von 11 Bossen · ${s.tot} Aufgaben${s.pc == null ? '' : `, ${s.pc} % richtig`} · zuletzt aktiv ${fmtDay(s.at)}${s.won ? ' · 🏆 NULL-Bot besiegt' : ''}</p>
+    <div class="panel section">
+      <div class="setrow"><label>Alle Planeten freischalten</label>${sw('all', u.all, 'Alle Planeten freischalten')}</div>
+      <div class="setrow"><label>Endkampf gegen NULL-Bot freischalten</label>${sw('final', u.final || u.all, 'Endkampf freischalten')}</div>
+    </div>
+    <div class="panel section"><h3 class="eyebrow" style="margin-bottom:6px">Planeten</h3>
+      ${PLANETS.map((p, i) => {
+        const nat = naturalOpen(st, i), mine = !!(u.all || planets[p.id]), stt = (st.stats || {})[p.id] || { c: 0, w: 0 }, n = stt.c + stt.w;
+        const status = nat ? '✅ selbst erreicht' : mine ? '🔓 von dir freigeschaltet' : '🔒 gesperrt';
+        return `<div class="setrow tp"><div><b>${p.name}</b> <span class="sm">${esc(p.topic || '')}</span><div class="sm">★ ${pStarsOf(st, p)}/${p.games.length * 3}${(st.boss || {})[p.id] ? ' · 👑 Boss besiegt' : ''} · ${n ? `${n} Aufgaben, ${Math.round(stt.c / n * 100)} % richtig` : 'noch nicht geübt'} · ${status}</div></div>
+          ${i === 0 ? '<span class="sm">immer offen</span>' : sw(p.id, mine, p.name + ' freischalten')}</div>`;
+      }).join('')}
+      <p class="sm" style="margin:10px 0 0">Freischaltungen wirken sofort – auch wenn der Spieler gerade spielt. Sterne und Fortschritt des Spielers bleiben unverändert.</p>
+    </div></div>`;
+  $('#back').onclick = () => { showTeacher(); };
+  $$('[data-sw]').forEach(b => b.onclick = async () => {
+    if (b.disabled) return;
+    const id = b.dataset.sw, next = { all: !!u.all, final: !!u.final, planets: { ...planets } };
+    if (id === 'all') next.all = !u.all;
+    else if (id === 'final') { next.final = !(u.final || u.all); if (!next.final && u.all) { next.all = false; PLANETS.forEach(p => { next.planets[p.id] = true; }); } }
+    else { const on = !(u.all || planets[id]); if (u.all && !on) { next.all = false; PLANETS.forEach(p => { next.planets[p.id] = true; }); } next.planets[id] = on; }
+    Object.keys(next.planets).forEach(k => { if (!next.planets[k]) delete next.planets[k]; });
+    $$('[data-sw]').forEach(x => { x.disabled = true; });
+    try { await ACC.be.setUnlocks(uid, next); d.unl = next; Snd.click(); }
+    catch (e) { toast(ACC.be.errText(e) || 'Speichern hat nicht geklappt.', '⚠️'); }
+    showTeacherPlayer(uid);
+  });
+  window.scrollTo(0, 0);
 }
 /* ---------- Start ---------- */
 $('#homeBtn').onclick = showMap;

@@ -514,3 +514,8 @@ table.ht th { background: var(--panel2); font-size: 14px; }
 table.ct { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; }
 table.ct th, table.ct td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 table.ct th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+/* Lehrer-Zentrale: anklickbare Spielerzeilen */
+table.tl tr[data-u] { cursor: pointer; }
+table.tl tr[data-u]:hover td, table.tl tr[data-u]:focus-visible td { background: var(--panel2); }
+.setrow.tp { align-items: flex-start; }
+.setrow.tp > div { flex: 1; min-width: 0; }

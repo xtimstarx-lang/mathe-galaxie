@@ -165,13 +165,14 @@ const planetStars = p => p.games.reduce((s, g) => s + (S.stars[gkey(p, g)] || 0)
 const totalStars = () => PLANETS.reduce((s, p) => s + planetStars(p), 0);
 const MAIN = PLANETS.slice(0, 10);
 function unlocked(i) {
-  if (S.teacher || i === 0) return true;
+  if (teacherOn() || i === 0) return true;
   const p = PLANETS[i];
+  if (extraOpen(p.id)) return true;
   if (p.id === 'bonus') return Object.keys(S.boss).length >= 2;
   const prev = PLANETS[i - 1];
   return !!S.boss[prev.id] || planetStars(prev) >= 6;
 }
-const finalUnlocked = () => S.teacher || MAIN.every(p => S.boss[p.id]);
+const finalUnlocked = () => teacherOn() || !!(ACC.unl && (ACC.unl.final || ACC.unl.all)) || MAIN.every(p => S.boss[p.id]);
 function addCr(n) { S.cr += n; S.crEarned += n; if (S.crEarned >= 200) award('rich'); }
 function award(id) {
   if (S.badges[id]) return;
@@ -916,7 +917,8 @@ function showParents() {
       <p class="sm" style="margin:10px 0 0">Grün = richtig, rot = falsch. Prozent = Anteil richtiger Antworten.</p></div>
     <div class="panel section">
       <div class="setrow"><label for="nameIn">Name für die Urkunde</label><input id="nameIn" class="txtin" maxlength="30" value="${esc(S.name)}" placeholder="Vorname"></div>
-      <div class="setrow"><label id="tL">Lehrer-Modus: alle Planeten freischalten</label><button class="switch" role="switch" aria-labelledby="tL" aria-checked="${S.teacher}" id="tSw"></button></div>
+      ${selfTeacherAllowed() ? `<div class="setrow"><label id="tL">Lehrer-Modus: alle Planeten freischalten</label><button class="switch" role="switch" aria-labelledby="tL" aria-checked="${S.teacher}" id="tSw"></button></div>` : ''}
+      ${ACC.admin ? '<div class="setrow"><label>Spieler-Übersicht & Planeten freischalten</label><button class="btn pink" id="tchBtn">🧑‍🏫 Lehrer-Zentrale</button></div>' : ''}
       <div class="setrow"><label id="sL">Soundeffekte</label><button class="switch" role="switch" aria-labelledby="sL" aria-checked="${S.sound}" id="sSw"></button></div>
       <div class="setrow"><label>Spielstand löschen</label><button class="btn sec" id="reset">Alles zurücksetzen</button></div>
     </div>
@@ -925,7 +927,8 @@ function showParents() {
   $('#back').onclick = showMap;
   classOverview();
   $('#nameIn').addEventListener('input', e => { S.name = e.target.value.trim().slice(0, 30); save(); });
-  $('#tSw').onclick = e => { S.teacher = !S.teacher; e.currentTarget.setAttribute('aria-checked', S.teacher); save(); };
+  if ($('#tSw')) $('#tSw').onclick = e => { S.teacher = !S.teacher; e.currentTarget.setAttribute('aria-checked', S.teacher); save(); };
+  if ($('#tchBtn')) $('#tchBtn').onclick = showTeacher;
   $('#sSw').onclick = e => { S.sound = !S.sound; e.currentTarget.setAttribute('aria-checked', S.sound); save(); updateTop(); };
   $('#reset').onclick = () => modal('<h2>Wirklich alles löschen?</h2><p>Sterne, Kristalle, Abzeichen und Statistik gehen verloren.</p>',
     [{ label: 'Abbrechen', cls: 'sec' }, { label: 'Ja, löschen', cls: 'pink', fn: () => { const nm0 = ACC.acct ? ACC.acct.name : ''; S = clone(DEF); S.name = nm0; save(); updateTop(); paintLogo(); showMap(); } }]);
