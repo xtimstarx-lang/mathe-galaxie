@@ -34,6 +34,15 @@ img{max-width:100%}
 </style>
 HEAD
 sed '/^<title>/d' head.html
+FBV=10.12.2
+if [ -f firebase-config.json ]; then
+  echo "<script src=\"https://www.gstatic.com/firebasejs/$FBV/firebase-app-compat.js\"></script>"
+  echo "<script src=\"https://www.gstatic.com/firebasejs/$FBV/firebase-auth-compat.js\"></script>"
+  echo "<script src=\"https://www.gstatic.com/firebasejs/$FBV/firebase-firestore-compat.js\"></script>"
+  echo "<script>window.GALAXIE_PUBLIC=true;window.GALAXIE_FIREBASE=$(cat firebase-config.json);</script>"
+else
+  echo "<script>window.GALAXIE_PUBLIC=true;</script>"
+fi
 echo '<style>'; cat style.css; echo '</style>'
 echo '</head>'
 echo '<body>'

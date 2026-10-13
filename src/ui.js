@@ -8,8 +8,7 @@ const app = $('#app');
 const KEY = 'mathe-galaxie-v1';
 const DEF = { name: '', xp: 0, cr: 0, crEarned: 0, stars: {}, boss: {}, finalWon: false, stats: {}, lvl: {}, owned: ['ship0', 'hat0'], ship: 'ship0', hat: 'hat0', sound: true, teacher: false, badges: {}, daily: null, games: 0, seen: {} };
 const clone = o => JSON.parse(JSON.stringify(o));
-let S = load();
-function load() { try { const raw = localStorage.getItem(KEY); if (raw) return Object.assign(clone(DEF), JSON.parse(raw)); } catch (e) { /* Speicher blockiert */ } return clone(DEF); }
+let S = clone(DEF);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /* ---------- Texte ---------- */
@@ -911,7 +910,7 @@ function showParents() {
   const weak = rows.filter(r => r.n >= 5).sort((a, b) => a.pc - b.pc).slice(0, 2).filter(r => r.pc < .8);
   const total = rows.reduce((a, r) => a + r.n, 0), totalC = rows.reduce((a, r) => a + r.s.c, 0);
   app.innerHTML = `<div class="screen"><button class="back" id="back">← Sternenkarte</button><h2 class="sec-h">Eltern & Lehrkräfte</h2>
-    <p class="sec-p">${ACC.key ? `Übersicht für den Account <b>${esc(ACC.meta.name)}</b>.` : 'Übersicht über alle gelösten Aufgaben auf diesem Gerät (Gast).'} ${total ? `Insgesamt ${total} Aufgaben, davon ${Math.round(totalC / total * 100)} % richtig.` : 'Noch keine Aufgaben gelöst.'}</p>
+    <p class="sec-p">${ACC.acct ? `Übersicht für den Account <b>${esc(ACC.acct.name)}</b>.` : ''} ${total ? `Insgesamt ${total} Aufgaben, davon ${Math.round(totalC / total * 100)} % richtig.` : 'Noch keine Aufgaben gelöst.'}</p>
     ${weak.length ? `<div class="weak"><b>Hier lohnt sich Üben:</b> ${weak.map(r => `${r.p.name} (${r.p.topic}, ${Math.round(r.pc * 100)} % richtig)`).join(' · ')}</div>` : ''}
     <div class="panel section">${rows.map(r => `<div class="statrow"><span>${r.p.name}</span><div class="sb" title="${r.s.c} richtig, ${r.s.w} falsch">${r.n ? `<i class="c" style="width:${r.s.c / r.n * 100}%"></i><i class="w" style="width:${r.s.w / r.n * 100}%"></i>` : ''}</div><span class="pc">${r.n ? Math.round(r.pc * 100) + ' %' : '–'}</span></div>`).join('')}
       <p class="sm" style="margin:10px 0 0">Grün = richtig, rot = falsch. Prozent = Anteil richtiger Antworten.</p></div>
@@ -921,15 +920,15 @@ function showParents() {
       <div class="setrow"><label id="sL">Soundeffekte</label><button class="switch" role="switch" aria-labelledby="sL" aria-checked="${S.sound}" id="sSw"></button></div>
       <div class="setrow"><label>Spielstand löschen</label><button class="btn sec" id="reset">Alles zurücksetzen</button></div>
     </div>
-    ${ACC.isOwner && ACC.db ? '<div class="panel section"><h3 class="eyebrow" style="margin-bottom:8px">Klassen-Übersicht · alle Accounts</h3><div id="classBox"></div></div>' : ''}
-    <p class="sm">Die Aufgaben orientieren sich am Mathematik-Stoff der 4. Klasse (8. Schulstufe) in Österreich. Alle Aufgaben werden zufällig neu erzeugt; ${ACC.key ? 'der Spielstand wird in deinem Account gespeichert.' : 'als Gast wird der Spielstand nur in diesem Browser gespeichert.'}</p></div>`;
+    ${ACC.be && ACC.be.isOwner ? '<div class="panel section"><h3 class="eyebrow" style="margin-bottom:8px">Klassen-Übersicht · alle Accounts</h3><div id="classBox"></div></div>' : ''}
+    <p class="sm">Die Aufgaben orientieren sich am Mathematik-Stoff der 4. Klasse (8. Schulstufe) in Österreich. Alle Aufgaben werden zufällig neu erzeugt; der Spielstand wird in deinem Account gespeichert.</p></div>`;
   $('#back').onclick = showMap;
   classOverview();
   $('#nameIn').addEventListener('input', e => { S.name = e.target.value.trim().slice(0, 30); save(); });
   $('#tSw').onclick = e => { S.teacher = !S.teacher; e.currentTarget.setAttribute('aria-checked', S.teacher); save(); };
   $('#sSw').onclick = e => { S.sound = !S.sound; e.currentTarget.setAttribute('aria-checked', S.sound); save(); updateTop(); };
   $('#reset').onclick = () => modal('<h2>Wirklich alles löschen?</h2><p>Sterne, Kristalle, Abzeichen und Statistik gehen verloren.</p>',
-    [{ label: 'Abbrechen', cls: 'sec' }, { label: 'Ja, löschen', cls: 'pink', fn: () => { const nm0 = ACC.key ? ACC.meta.name : ''; S = clone(DEF); S.name = nm0; save(); updateTop(); paintLogo(); showMap(); if (!ACC.key) welcome(); } }]);
+    [{ label: 'Abbrechen', cls: 'sec' }, { label: 'Ja, löschen', cls: 'pink', fn: () => { const nm0 = ACC.acct ? ACC.acct.name : ''; S = clone(DEF); S.name = nm0; save(); updateTop(); paintLogo(); showMap(); } }]);
   window.scrollTo(0, 0);
 }
 function showCertificate() {
