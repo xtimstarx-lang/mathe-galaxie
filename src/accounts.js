@@ -232,7 +232,7 @@ function showLogin(opt = {}) {
       <div class="tabs" role="tablist"><button role="tab" aria-selected="${tab === 'login'}" data-t="login">Einloggen</button><button role="tab" aria-selected="${tab === 'new'}" data-t="new">Neuer Account</button></div>
       <p class="sm" style="margin:0 0 12px">${tab === 'new' ? 'Erstelle deinen Piloten-Account. Dein Fortschritt wird darin gespeichert – du kannst dich auf jedem Gerät einloggen.' : 'Logge dich ein, um zu spielen.'}</p>
       <form id="accForm" autocomplete="on" novalidate>
-        <label class="lf"><span>Benutzername</span><input id="accName" name="username" class="txtin" maxlength="20" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(opt.prefill || '')}" placeholder="z. B. Lena oder Mathe-Max"></label>
+        <label class="lf"><span>Benutzername</span><input id="accName" name="username" class="txtin" maxlength="20" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(opt.prefill || '')}" placeholder="z. B. Mathe-Max"></label>
         <label class="lf"><span>Passwort</span><input id="accPw" name="password" class="txtin" type="password" maxlength="40" autocomplete="${tab === 'new' ? 'new-password' : 'current-password'}" placeholder="${tab === 'new' ? `mindestens ${PW_MIN} Zeichen` : ''}"></label>
         ${tab === 'new' ? '<label class="lf"><span>Passwort wiederholen</span><input id="accPw2" class="txtin" type="password" maxlength="40" autocomplete="new-password"></label>' : ''}
         <label class="chk"><input type="checkbox" id="accRem" checked> Auf diesem Gerät angemeldet bleiben</label>
